@@ -283,18 +283,18 @@ function create_tmoe_proot_stat_file() {
 function check_tmoe_proot_container_proc() {
 	local FILE_02=stat
 	local TMOE_PROC_FILE
-	TMOE_PROC_FILE=$(sed -n p /proc/${FILE_02} 2>/dev/null)
+	TMOE_PROC_FILE=$(sed -n p /proc/${FILE_02} 2>/dev/null || true)
 	if [ -z "${TMOE_PROC_FILE}" ]; then
 		create_tmoe_proot_stat_file
 		sed -i "s@##test02#@@" "${TMOE_STARTUP_SCRIPT}"
 	fi
 
 	local FILE_03='/proc/bus/pci/devices'
-	TMOE_PROC_FILE=$(sed -n p ${FILE_03} 2>/dev/null)
+	TMOE_PROC_FILE=$(sed -n p ${FILE_03} 2>/dev/null || true)
 	[[ -n "${TMOE_PROC_FILE}" ]] || sed -i "s@##test04#@@" "${TMOE_STARTUP_SCRIPT}"
 
 	for i in buddyinfo cgroups consoles crypto devices diskstats execdomains fb filesystems interrupts iomem ioports kallsyms keys key-users kpageflags loadavg locks misc modules pagetypeinfo partitions sched_debug softirqs timer_list uptime vmallocinfo vmstat zoneinfo; do
-		TMOE_PROC_FILE=$(sed -n p /proc/${i} 2>/dev/null)
+		TMOE_PROC_FILE=$(sed -n p /proc/${i} 2>/dev/null || true)
 		if [ -z "${TMOE_PROC_FILE}" ]; then
 			printf "%s\n" "Detecting permission detected for /proc/${i}, fixing..."
 			sed -i "s@##${i}#@@" "${TMOE_STARTUP_SCRIPT}"
@@ -302,7 +302,7 @@ function check_tmoe_proot_container_proc() {
 	done
 
 	local FILE_01=version
-	TMOE_PROC_FILE=$(sed -n p /proc/${FILE_01} 2>/dev/null)
+	TMOE_PROC_FILE=$(sed -n p /proc/${FILE_01} 2>/dev/null || true)
 	if [ -z "${TMOE_PROC_FILE}" ]; then
 		printf "%s\n" "Detecting permission denied for /proc/${FILE_01}, faking..."
 		echo "$(uname -a) (gcc version 10.1.0 20200630 (prerelease) (GCC) )" >"${TMOE_PROC_PREFIX}.${FILE_01}"
