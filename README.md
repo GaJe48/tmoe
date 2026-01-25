@@ -1,5 +1,3 @@
-# TMOE - Terminal MOE Container Manager
-
 ![TMOE Banner](assets/banner.png)
 
 [English](#english) | [Bahasa Indonesia](#bahasa-indonesia)
