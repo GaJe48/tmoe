@@ -2,14 +2,14 @@
 set -euo pipefail
 
 # --- Configuration ---
-TARGET_DIR="$HOME/.local/opt/tmoe"
-TARGET_FILE="$TARGET_DIR/tmoe"
+INSTALL_DIR="$HOME/.local/opt/tmoe"
+TARGET_FILE="$INSTALL_DIR/tmoe"
 REMOTE_URL="https://raw.githubusercontent.com/GaJe48/tmoe/master/tmoe"
 BIN_DIR="${PREFIX}/bin"
 SYMLINK_PATH="$BIN_DIR/tmoe"
 
 # --- Helper Functions ---
-log_info() { echo -e "\033[32m[INFO]\033[0m $1"; }
+log_info() { echo -e "\033[32m[INFO]\033[0m $1" >&2; }
 log_error() { echo -e "\033[31m[ERROR]\033[0m $1" >&2; }
 
 # --- Main Installation Logic ---
@@ -21,9 +21,9 @@ main() {
     fi
 
     # 2. Prepare Directories
-    if [[ ! -d "$TARGET_DIR" ]]; then
-        log_info "Creating target directory: $TARGET_DIR"
-        mkdir -p "$TARGET_DIR"
+    if [[ ! -d "$INSTALL_DIR" ]]; then
+        log_info "Creating target directory: $INSTALL_DIR"
+        mkdir -p "$INSTALL_DIR"
     fi
 
     if [[ ! -d "$BIN_DIR" ]]; then
