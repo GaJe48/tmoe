@@ -2,7 +2,7 @@
 set -euo pipefail
 
 # --- Configuration ---
-INSTALL_DIR="$HOME/.local/opt/tmoe"
+INSTALL_DIR="$HOME/.local/share/tmoe"
 TARGET_FILE="$INSTALL_DIR/tmoe"
 REMOTE_URL="https://raw.githubusercontent.com/GaJe48/tmoe/master/tmoe"
 BIN_DIR="${PREFIX}/bin"
@@ -16,8 +16,7 @@ log_error() { echo -e "\033[31m[ERROR]\033[0m $1" >&2; }
 main() {
     # 1. Dependency Check
     if ! command -v curl &>/dev/null; then
-        log_error "curl is required but not installed."
-        exit 1
+        pkg install -y curl || { apt update && apt install -y curl; } || { log_error "curl is required but not installed."; exit 1; }
     fi
 
     # 2. Prepare Directories

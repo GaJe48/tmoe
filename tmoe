@@ -2,7 +2,7 @@
 set -euo pipefail
 
 # --- Directory Constants ---
-INSTALL_DIR="$HOME/.local/opt/tmoe"
+INSTALL_DIR="$HOME/.local/share/tmoe"
 CONTAINER_DIR="$INSTALL_DIR/containers"
 CACHE_DIR="$INSTALL_DIR/cache"
 
@@ -256,23 +256,23 @@ install_proot_proc() {
 
 function create_tmoe_proot_stat_file() {
     cat >"${TMOE_PROC_PREFIX}.stat" <<-'ENDOFSTAT'
-		cpu  13543674 2263150 11590764 15571271 210309 1343827 851885 0 0 0
-		cpu0 3629787 489276 3129188 15571051 210302 802654 516635 0 0 0
-		cpu1 3221514 563397 2565534 19 0 168835 110203 0 0 0
-		cpu2 2884314 491225 2361364 18 1 161981 92821 0 0 0
-		cpu3 2664267 457057 2282166 21 0 166631 88732 0 0 0
-		cpu4 365877 83980 417984 25 6 15600 10165 0 0 0
-		cpu5 296831 71203 325638 39 0 9363 14383 0 0 0
-		cpu6 262541 59844 288038 49 0 10350 10848 0 0 0
-		cpu7 218543 47168 220852 49 0 8413 8098 0 0 0
-		intr 1168051864 0 0 0 276005458 0 24952856 5 4 5 0 0 958 302 0 0 0 543988 116 0 1 0 92 184 0 0 0 0 0 0 0 2 0 145446 16538 11 11 358496 0 1779 0 0 0 0 0 1761 106944 0 221398 21826498 15065436 42829013 0 361294 4515 66197491 0 0 82 0 0 0 95 11438 0 0 0 0 0 0 0 0 0 0 288050 6 5498890 688446 388694 0 0 0 0 0 1674782 2042455 0 0 0 0 0 90 120387 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 9 7 190 0 1434 3096 2536 13 13822 11167 0 0 485674 0 4 3244478 1 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 9327 0 0 0 0 0 0 0 3 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 18 0 0 0 0 30003 0 0 0 1471954 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 3975713 62570 292 1841582 5903677 88 1324421 35786 38 0 95 601 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 77575 30048 0 680 0 106 0 0 0 0 0 0 0 38 0 0 0 0 0 0 116 111 112 0 113 80 17256 201 0 0 0 0 0 0 0 0 1071 0 12984 5 151277 20 171 0 1 1 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 1 1 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 1 1 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 6969 0 45 0 0 4309 20 0 10 4 0 0 0 0 618 0 0 587152 46371 1206 0 493 3 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0
-		ctxt 1941467212
-		btime 1597149124
-		processes 1324243
-		procs_running 9
-		procs_blocked 1
-		softirq 268005113 132391 49905524 287215 24847758 108137456 132391 1472849 45583820 0 37505709
-	ENDOFSTAT
+cpu  13543674 2263150 11590764 15571271 210309 1343827 851885 0 0 0
+cpu0 3629787 489276 3129188 15571051 210302 802654 516635 0 0 0
+cpu1 3221514 563397 2565534 19 0 168835 110203 0 0 0
+cpu2 2884314 491225 2361364 18 1 161981 92821 0 0 0
+cpu3 2664267 457057 2282166 21 0 166631 88732 0 0 0
+cpu4 365877 83980 417984 25 6 15600 10165 0 0 0
+cpu5 296831 71203 325638 39 0 9363 14383 0 0 0
+cpu6 262541 59844 288038 49 0 10350 10848 0 0 0
+cpu7 218543 47168 220852 49 0 8413 8098 0 0 0
+intr 1168051864 0 0 0 276005458 0 24952856 5 4 5 0 0 958 302 0 0 0 543988 116 0 1 0 92 184 0 0 0 0 0 0 0 2 0 145446 16538 11 11 358496 0 1779 0 0 0 0 0 1761 106944 0 221398 21826498 15065436 42829013 0 361294 4515 66197491 0 0 82 0 0 0 95 11438 0 0 0 0 0 0 0 0 0 0 288050 6 5498890 688446 388694 0 0 0 0 0 1674782 2042455 0 0 0 0 0 90 120387 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 9 7 190 0 1434 3096 2536 13 13822 11167 0 0 485674 0 4 3244478 1 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 9327 0 0 0 0 0 0 0 3 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 18 0 0 0 0 30003 0 0 0 1471954 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 3975713 62570 292 1841582 5903677 88 1324421 35786 38 0 95 601 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 77575 30048 0 680 0 106 0 0 0 0 0 0 0 38 0 0 0 0 0 0 116 111 112 0 113 80 17256 201 0 0 0 0 0 0 0 0 1071 0 12984 5 151277 20 171 0 1 1 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 1 1 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 1 1 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 6969 0 45 0 0 4309 20 0 10 4 0 0 0 0 618 0 0 587152 46371 1206 0 493 3 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0
+ctxt 1941467212
+btime 1597149124
+processes 1324243
+procs_running 9
+procs_blocked 1
+softirq 268005113 132391 49905524 287215 24847758 108137456 132391 1472849 45583820 0 37505709
+ENDOFSTAT
 }
 
 function check_tmoe_proot_container_proc() {
@@ -666,7 +666,6 @@ configure_mounts() {
     fi
 
     # Dynamic Mounts (MOUNT_SOURCE_N)
-    # shellcheck disable=SC2004
     for ((i = 1; i <= ${NUM_OF_MOUNTS}; i++)); do
         local src_var="MOUNT_SOURCE_${i}"
         local dst_var="MOUNT_POINT_${i}"
@@ -775,12 +774,13 @@ configure_environment() {
     CMD_ARGS+=("TERM=xterm-256color")
     CMD_ARGS+=("TMPDIR=/tmp")
     CMD_ARGS+=("DISPLAY=:0") # Default display
+    CMD_ARGS+=("TZ=$(getprop persist.sys.timezone 2>/dev/null)")
 
     # 4. Locale
     if [[ -r "${TMOE_LOCALE_FILE}" ]]; then
         CMD_ARGS+=("LANG=$(head -n 1 "${TMOE_LOCALE_FILE}")")
     else
-        CMD_ARGS+=("LANG=zh_CN.UTF-8")
+        CMD_ARGS+=("LANG=en_US.UTF-8")
     fi
 
     # 5. Load Container Env File
@@ -831,7 +831,7 @@ configure_environment() {
 # Main Function
 # ------------------------------------------------------------------------------
 main() {
-	unset LD_PRELOAD
+    unset LD_PRELOAD
     load_configs
     determine_proot_program
 
@@ -879,11 +879,11 @@ configure_dns() {
     log_info "Configuring DNS..."
     rm -f "$rootfs/etc/resolv.conf"
     cat >"$rootfs/etc/resolv.conf" <<-'EndOfFile'
-		nameserver 1.1.1.1
-		nameserver 8.8.8.8
-		nameserver 2606:4700:4700::1111
-		nameserver 2001:4860:4860::8888
-	EndOfFile
+nameserver 1.1.1.1
+nameserver 8.8.8.8
+nameserver 2606:4700:4700::1111
+nameserver 2001:4860:4860::8888
+EndOfFile
     chmod 644 "$rootfs/etc/resolv.conf"
 }
 
@@ -894,7 +894,7 @@ configure_sources() {
         mv "$rootfs/etc/apt/sources.list" "$rootfs/etc/apt/sources.list.bak"
     fi
     dirname "$rootfs/etc/apt" | xargs mkdir -p
-    cat >"$rootfs/etc/apt/sources.list" <<EOF
+    cat >"$rootfs/etc/apt/sources.list" <<-'EOF'
 deb http://deb.debian.org/debian/ trixie main contrib non-free non-free-firmware
 deb http://deb.debian.org/debian/ trixie-updates main contrib non-free non-free-firmware
 deb http://deb.debian.org/debian-security/ trixie-security main contrib non-free non-free-firmware
@@ -908,12 +908,97 @@ configure_hostname() {
     echo "127.0.0.1 localhost" >>"$rootfs/etc/hosts"
 }
 
+configure_zsh() {
+    local rootfs="$1"
+    log_info "Configuring ZSH setup..."
+
+    mkdir -p ~/.termux && curl -fLo ~/.termux/font.ttf https://github.com/ryanoasis/nerd-fonts/raw/master/patched-fonts/JetBrainsMono/Ligatures/Regular/JetBrainsMonoNerdFontMono-Regular.ttf && termux-reload-settings
+
+    # Backup original .profile
+    if [[ -f "$rootfs/root/.profile" ]]; then
+        mv "$rootfs/root/.profile" "$rootfs/root/.profile.bak"
+    fi
+
+    # Create setup .profile
+    cat >"$rootfs/root/.profile" <<-'EOF'
+#!/usr/bin/env bash
+echo "----------------------------------------------------------------"
+echo "First launch detected. Running initial setup..."
+echo "----------------------------------------------------------------"
+
+# Update and Install
+apt-get update
+apt-get install -y git zsh file curl
+
+# Change default shell
+if command -v zsh >/dev/null; then
+    echo "Changing default shell to zsh..."
+    chsh -s /bin/zsh
+else
+    echo "Error: zsh install failed."
+fi
+
+# Restore original profile
+echo "Restoring original environment..."
+rm -f "$HOME/.profile"
+if [ -f "$HOME/.profile.bak" ]; then
+    mv "$HOME/.profile.bak" "$HOME/.profile"
+fi
+
+echo "Setup complete!"
+echo "Please re-login to enter your new ZSH environment."
+echo "Exiting..."
+sleep 2
+exit 0
+EOF
+    chmod 755 "$rootfs/root/.profile"
+
+    # Create .zshrc
+    cat >"$rootfs/root/.zshrc" <<-'EOF'
+HISTFILE="$HOME/.zsh_history"
+SAVEHIST=10000
+setopt SHARE_HISTORY
+setopt HIST_IGNORE_DUPS
+
+setopt AUTO_CD
+setopt AUTO_PUSHD
+
+if [[ ! -f $HOME/.local/share/zinit/zinit.git/zinit.zsh ]]; then
+    print -P "%F{33} %F{220}Installing %F{33}ZDHARMA-CONTINUUM%F{220} Initiative Plugin Manager (%F{33}zdharma-continuum/zinit%F{220})…%f"
+    command mkdir -p "$HOME/.local/share/zinit" && command chmod g-rwX "$HOME/.local/share/zinit"
+    command git clone --depth 1 https://github.com/zdharma-continuum/zinit "$HOME/.local/share/zinit/zinit.git" && \
+        print -P "%F{33} %F{34}Installation successful.%f%b" || \
+        print -P "%F{160} The clone has failed.%f%b"
+fi
+
+source "$HOME/.local/share/zinit/zinit.git/zinit.zsh"
+autoload -Uz _zinit
+(( ${+_comps} )) && _comps[zinit]=_zinit
+
+zinit ice as"command" from"gh-r" \
+    bpick"*$(uname -m)*linux-musl*" \
+    mv"starship* -> starship" \
+    atclone'
+        mkdir -p ~/.config; 
+        ./starship preset gruvbox-rainbow >! ~/.config/starship.toml; 
+        ./starship init zsh > init.zsh; 
+        ./starship completions zsh > _starship' \
+    atpull'%atclone' \
+    src"init.zsh"
+zinit light starship/starship
+
+zinit ice depth"1" wait lucid
+zinit light zdharma-continuum/fast-syntax-highlighting
+EOF
+}
+
 configure_post_install() {
     local rootfs="$1"
 
     configure_dns "$rootfs"
     configure_sources "$rootfs"
     configure_hostname "$rootfs"
+    configure_zsh "$rootfs"
 
     # Generate Startup Script
     create_proot_startup_script "$rootfs"
@@ -933,7 +1018,7 @@ login_container() {
 
     if [[ -x "$start_script" ]]; then
         log_title "Logging into $name..."
-        bash -x "$start_script"
+        "$start_script"
     else
         log_error "Container '$name' not found or start script missing."
         log_warn "Path checked: $start_script"
