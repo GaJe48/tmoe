@@ -12,8 +12,6 @@ PROC_URL="https://github.com/cu233/proot_proc/raw/master/proc.tar.xz"
 
 # --- Constants ---
 ARCH_TYPE="arm64"
-TRUE_ARCH_TYPE="arm64"
-LINUX_DISTRO="Android"
 
 # --- Colors ---
 RED='\033[31m'
@@ -32,15 +30,6 @@ log_info() { echo -e "${GREEN}[INFO]${RESET} $1" >&2; }
 log_warn() { echo -e "${YELLOW}[WARN]${RESET} $1" >&2; }
 log_error() { echo -e "${RED}[ERROR]${RESET} $1" >&2; }
 log_title() { echo -e "${BOLD}${BLUE}== $1 ==${RESET}" >&2; }
-
-check_chksum() {
-    local file="$1"
-    local expected="$2"
-    if [[ ! -f "$file" ]]; then return 1; fi
-    local actual
-    actual=$(sha256sum "$file" | awk '{print $1}')
-    [[ "$actual" == "$expected" ]]
-}
 
 check_dependencies() {
     for cmd in curl tar sha256sum proot; do
@@ -79,88 +68,59 @@ list_containers() {
     fi
 }
 
-get_latest_version() {
-    log_info "Fetching latest rootfs info from $DEBIAN_REPO..."
-    local date_url
-    date_url=$(curl -sL "$DEBIAN_REPO/" |
-        grep -oE 'href="[0-9]{8}_[0-9]{2}(:|%3A)[0-9]{2}/"' |
-        sed 's/href="//;s/"//;s/%3A/:/g' |
-        sort | tail -n 1)
-
-    if [[ -z "$date_url" ]]; then
-        log_error "Failed to find rootfs date version."
-        return 1
-    fi
-    echo "$date_url"
-}
-
 download_rootfs() {
-    local date_url="$1"
-    local full_url="${DEBIAN_REPO}/${date_url}"
+    local out_dir="$1"
+    local repo="$2"
+    local distro; distro=$(echo "$repo" | cut -d'/' -f5)
+    local arch; arch=$(echo "$repo" | cut -d'/' -f7)
+
+    local date_url; date_url=$(curl -sL "$repo" |
+    grep -oE 'href="[0-9]{8}_[0-9]{2}(:|%3A)[0-9]{2}/"' |
+    sed 's/href="//;s/"//;s/%3A/:/g' |
+    sort | tail -n 1) || {
+        log_error "Failed to get latest rootfs."
+        return 1
+    }
+    log_info "Latest rootfs: ${date_url%/}"
+    
+    local full_url="${repo}/${date_url}"
     local rootfs_name="rootfs.tar.xz"
     local sha256_name="SHA256SUMS"
-    local cached_rootfs="$CACHE_DIR/debian-trixie-arm64-${date_url%/}-$rootfs_name"
-    local cached_sha256="$CACHE_DIR/debian-trixie-arm64-${date_url%/}-$sha256_name"
+    local rootfs_file="$out_dir/${distro}-${arch}-${date_url%/}-$rootfs_name"
+    local sha256_file="$out_dir/${distro}-${arch}-${date_url%/}-$sha256_name"
 
     # Download SHA256SUMS
     log_info "Checking checksums..."
-    curl -sL -o "$cached_sha256" "${full_url}${sha256_name}"
+    curl -sL -o "$sha256_file" "${full_url}${sha256_name}"
 
-    local expected_sha256
-    expected_sha256=$(grep "$rootfs_name" "$cached_sha256" | awk '{print $1}' || true)
+    local expected_sha256; expected_sha256=$(grep "$rootfs_name" "$sha256_file" | awk '{print $1}')
 
-    if [[ -z "$expected_sha256" ]]; then
-        log_warn "Could not find SHA256 checksum. Validating by size/existence only."
-    fi
+    verify_checksum() {
+        local rootfs_file="$1"
+        local expected_sha256="$2"
+        local actual_sha256; actual_sha256=$(sha256sum "$rootfs_file" | awk '{print $1}')
+        [[ "$actual_sha256" == "$expected_sha256" ]]
+    }
 
     # Cleanup Old Cache
-    # Remove any rootfs/sha256 files that do not match the current version we are targeting.
-    for f in "$CACHE_DIR"/debian-trixie-arm64-*-rootfs.tar.xz "$CACHE_DIR"/debian-trixie-arm64-*-SHA256SUMS; do
+    for f in "${out_dir}/${distro}-${arch}-*-rootfs.tar.xz" "${out_dir}/${distro}-${arch}-*-SHA256SUMS"; do
         [[ -f "$f" ]] || continue
-        if [[ "$f" != "$cached_rootfs" && "$f" != "$cached_sha256" ]]; then
+        if [[ "$f" != "$rootfs_file" && "$f" != "$sha256_file" ]]; then
             log_info "Removing old cache file: $(basename "$f")"
             rm -f "$f"
         fi
     done
 
     # Check Cache
-    local need_download=true
-    if [[ -f "$cached_rootfs" ]]; then
-        if [[ -n "$expected_sha256" ]]; then
-            log_info "Verifying local cache..."
-            local local_sha256
-            local_sha256=$(sha256sum "$cached_rootfs" | awk '{print $1}')
-            if [[ "$local_sha256" == "$expected_sha256" ]]; then
-                log_info "Cache valid. Using cached file."
-                need_download=false
-            else
-                log_warn "Cache mismatch. Redownloading..."
-            fi
-        else
-            need_download=false
-        fi
-    fi
-
-    if [[ "$need_download" = true ]]; then
+    if [[ -f "$rootfs_file" ]] && [[ -n "$expected_sha256" ]] && verify_checksum "$rootfs_file" "$expected_sha256"; then
+        log_info "Cache valid. Using cached file."
+    else
         log_info "Downloading rootfs to cache..."
-        curl -L -o "$cached_rootfs" "${full_url}${rootfs_name}" --progress-bar
-
-        if [[ ! -f "$cached_rootfs" ]]; then
-            log_error "Download failed."
-            return 1
-        fi
-
-        # Verify again
-        if [[ -n "$expected_sha256" ]]; then
-            local local_sha256
-            local_sha256=$(sha256sum "$cached_rootfs" | awk '{print $1}')
-            if [[ "$local_sha256" != "$expected_sha256" ]]; then
-                log_error "Checksum verification failed after download."
-                return 1
-            fi
-        fi
+        curl -L -o "$rootfs_file" "${full_url}${rootfs_name}" --progress-bar || { log_error "Download failed."; return 1; }
+        verify_checksum "$rootfs_file" "$expected_sha256" || { log_error "Checksum verification failed."; return 1; }
     fi
-    echo "$cached_rootfs"
+
+    echo "$rootfs_file"
 }
 
 extract_rootfs() {
@@ -209,18 +169,10 @@ install_distro() {
     log_title "Installing $distro ($ARCH_TYPE) to $target_dir"
 
     # 1. Get Version & Download
-    local date_url
-    date_url=$(get_latest_version) || return 1
-    log_info "Latest version: $date_url"
-
-    local rootfs_file
-    rootfs_file=$(download_rootfs "$date_url") || {
-        rm -rf "$target_dir"
-        return 1
-    }
+    local rootfs_file; rootfs_file=$(download_rootfs "$CACHE_DIR" "$DEBIAN_REPO")
 
     # 2. Extract
-    extract_rootfs "$rootfs_file" "$target_dir" || return 1
+    extract_rootfs "$rootfs_file" "$target_dir"
 
     # 3. Install Proot Proc
     install_proot_proc "$target_dir"
@@ -249,6 +201,7 @@ install_proot_proc() {
     if [[ -f "$proc_tar" ]]; then
         log_info "Extracting proot_proc..."
         tar -Jxf "$proc_tar" -C "$target_root" 2>/dev/null
+        mv "${target_root}/usr/local/etc/tmoe-linux/" "${target_root}/usr/local/etc/tmoe/"
     else
         log_warn "Failed to obtain proot_proc. Some features may not work."
     fi
@@ -276,486 +229,54 @@ ENDOFSTAT
 }
 
 function check_tmoe_proot_container_proc() {
-    local FILE_02=stat
-    local TMOE_PROC_FILE
-    TMOE_PROC_FILE=$(sed -n p /proc/${FILE_02} 2>/dev/null || true)
-    if [ -z "${TMOE_PROC_FILE}" ]; then
-        create_tmoe_proot_stat_file
-        sed -i "s@##test02#@@" "${TMOE_STARTUP_SCRIPT}"
+    [[ -z "$(head -n 1 /proc/stat 2>/dev/null)" ]] && { create_tmoe_proot_stat_file; sed -i "/.proot_proc.stat/s/^[[:space:]]*#/   /" "${TMOE_STARTUP_SCRIPT}"; }
+
+    if [[ -z "$(head -n 1 /proc/version 2>/dev/null)" ]]; then
+        printf "%s\n" "Detecting permission denied for /proc/version, faking..."
+        echo "$(uname -a) (gcc version 10.1.0 20200630 (prerelease) (GCC) )" >"${TMOE_PROC_PREFIX}.version"
+        sed -i "/.proot_proc.version/s/^[[:space:]]*#/   /" "${TMOE_STARTUP_SCRIPT}"
     fi
 
-    local FILE_03='/proc/bus/pci/devices'
-    TMOE_PROC_FILE=$(sed -n p ${FILE_03} 2>/dev/null || true)
-    [[ -n "${TMOE_PROC_FILE}" ]] || sed -i "s@##test04#@@" "${TMOE_STARTUP_SCRIPT}"
+    [[ -z "$(head -n 1 /proc/bus/pci/devices 2>/dev/null)" ]] && sed -i "/proot_proc\/bus/s/^[[:space:]]*#/   /" "${TMOE_STARTUP_SCRIPT}"
 
     for i in buddyinfo cgroups consoles crypto devices diskstats execdomains fb filesystems interrupts iomem ioports kallsyms keys key-users kpageflags loadavg locks misc modules pagetypeinfo partitions sched_debug softirqs timer_list uptime vmallocinfo vmstat zoneinfo; do
-        TMOE_PROC_FILE=$(sed -n p /proc/${i} 2>/dev/null || true)
-        if [ -z "${TMOE_PROC_FILE}" ]; then
-            printf "%s\n" "Detecting permission detected for /proc/${i}, fixing..."
-            sed -i "s@##${i}#@@" "${TMOE_STARTUP_SCRIPT}"
+        if [[ -z "$(sed -n p /proc/${i} 2>/dev/null)" ]]; then
+            printf "%s\n" "Detecting permission denied for /proc/${i}, fixing..."
+            sed -i "/proot_proc\/${i}/s/^[[:space:]]*#/   /" "${TMOE_STARTUP_SCRIPT}"
         fi
     done
-
-    local FILE_01=version
-    TMOE_PROC_FILE=$(sed -n p /proc/${FILE_01} 2>/dev/null || true)
-    if [ -z "${TMOE_PROC_FILE}" ]; then
-        printf "%s\n" "Detecting permission denied for /proc/${FILE_01}, faking..."
-        echo "$(uname -a) (gcc version 10.1.0 20200630 (prerelease) (GCC) )" >"${TMOE_PROC_PREFIX}.${FILE_01}"
-        sed -i "s@##test01#@@" "${TMOE_STARTUP_SCRIPT}"
-    fi
 }
 
 function create_proot_startup_script() {
-    local DEBIAN_CHROOT="$1"
+    local ROOTFS_DIR="$1"
 
     # Vars for the generated script
-    local TMOE_CONFIG_DIR="${DEBIAN_CHROOT}/usr/local/etc/tmoe"
+    local TMOE_CONFIG_DIR="${ROOTFS_DIR}/usr/local/etc/tmoe"
     local TMOE_STARTUP_SCRIPT="${TMOE_CONFIG_DIR}/start.sh"
     local TMOE_PROC_PREFIX="${TMOE_CONFIG_DIR}/.proot_proc"
 
-    local CONFIG_FOLDER="${HOME}/.config/tmoe"
-    local TMPDIR="/tmp"
-
-    mkdir -p "${TMOE_CONFIG_DIR}" "${CONFIG_FOLDER}"
+    mkdir -p "${TMOE_CONFIG_DIR}"
 
     # Generate the script content
     cat >"${TMOE_STARTUP_SCRIPT}" <<-ENDOFPROOT
 #!/usr/bin/env bash
 set -euo pipefail
 
-# ------------------------------------------------------------------------------
-# Logging & Error Handling
-# ------------------------------------------------------------------------------
-log_warn() { echo -e "\033[33m[WARN]\033[0m \$1" >&2; }
-log_error() { echo -e "\033[31m[ERROR]\033[0m \$1" >&2; }
-
-# ------------------------------------------------------------------------------
-# Configuration Variables
-# ------------------------------------------------------------------------------
-
-# -- User & Work Directory --
-PROOT_USER="root"
-# "default" auto-detects from /etc/passwd
-HOME_DIR="default"
-# "default" uses user's home dir
-WORK_DIR="default"
-
-# -- Paths --
-# NOTE: These paths are specific to this container instance.
-ROOTFS_DIR="${DEBIAN_CHROOT}"
-PROOT_PROC_DIR="${TMOE_CONFIG_DIR}"
-
-# -- Global Configuration Files --
-PROOT_CONF_FILE="${CONFIG_FOLDER}/proot_global.conf"
-SD_CONF_FILE="${CONFIG_FOLDER}/rootless/mount_sd.conf"
-TERMUX_CONF_FILE="${CONFIG_FOLDER}/rootless/mount_termux.conf"
-TF_CONF_FILE="${CONFIG_FOLDER}/rootless/mount_tf.conf"
-STORAGE_CONF_FILE="${CONFIG_FOLDER}/rootless/mount_storage.conf"
-LOAD_ENV_FILE=true
-CONTAINER_ENV_FILE="${TMOE_CONFIG_DIR}/.env"
-
-# -- Proot Binary & Loader --
-# Options: "default", "system", "termux", "compatibility", "32", or absolute path
-PROOT_BIN="default"
-PROOT_PROGRAM=""      # Will be determined dynamically
-PROOT_LOADER=""       # Will be determined dynamically
-LD_LIB_PATH="default" # For custom loader library path
-# Compatibility paths
-PROOT_COMPATIBLE_MODE_BIN="${INSTALL_DIR}/lib/data/data/com.termux/files/usr/bin/proot"
-COMPATIBLE_MODE_LOADER="${INSTALL_DIR}/lib/data/data/com.termux/files/usr/libexec/proot/loader"
-COMPATIBLE_MODE_LD_LIB_PATH="${INSTALL_DIR}/lib/data/data/com.termux/files/usr/lib"
-PROOT_32_TERMUX_BIN="${INSTALL_DIR}/lib32/data/data/com.termux/files/usr/bin/proot"
-
-# -- Proot Options --
-KILL_ON_EXIT=true
-PROOT_SYSVIPC=true
-PROOT_L=true  # Lstat fix
-PROOT_H=false # Hide .proot.* files
-PROOT_P=false # Port binding fix
-FAKE_KERNEL=false
-KERNEL_RELEASE="5.10.105-3-cloud-${ARCH_TYPE}"
-LINK_TO_SYMLINK=true
-PROOT_DEBUG=false
-VERBOSE_LEVEL=2
-SHARE_PROOT_LOADER=false
-OLD_ANDROID_VERSION_COMPATIBILITY_MODE=false
-
-# -- QEMU Configuration --
-HOST_DISTRO="${LINUX_DISTRO}"
-HOST_ARCH="${TRUE_ARCH_TYPE}"
-CONTAINER_ARCH="${ARCH_TYPE}"
-SKIP_QEMU_DETECTION=false
-QEMU_32_ENABLED=false
-QEMU_USER_BIN="default"
-QEMU_USER_STATIC_PATH="${INSTALL_DIR}/lib/usr/bin"
-QEMU_USER_STATIC_32_PATH="${INSTALL_DIR}/lib32/usr/bin"
-
-# -- EXA (Advanced Emulation) --
-EXA_ENABLED=false
-EXA_PATH="${INSTALL_DIR}/lib32/usr/bin"
-VFS_HACKS="tlsasws,tsi,spd"
-VFS_KIND="guest-first"
-SOCKET_PATH_SUFFIX=""
-VPATHS_LIST="/dev/null"
-
-# -- Shells --
-DEFAULT_LOGIN_SHELL_0="/bin/zsh"
-DEFAULT_LOGIN_SHELL_1="/bin/fish"
-DEFAULT_LOGIN_SHELL_2="/bin/bash"
-DEFAULT_LOGIN_SHELL_3="/bin/ash"
-DEFAULT_LOGIN_SHELL_4="/bin/su"
-LOGIN_SHELL_ARG="-l"
-TMOE_SHELL="" # Will be determined
-
-# -- Mounts --
-MOUNT_SD=""
-SD_MOUNT_POINT="/media/sd"
-MOUNT_TERMUX=""
-TERMUX_DIR="/data/data/com.termux/files"
-TERMUX_MOUNT_POINT="/media/termux"
-MOUNT_TF=""
-TF_MOUNT_POINT="/media/tf"
-TF_CARD_LINK="${HOME}/storage/external-1"
-MOUNT_STORAGE=""
-STORAGE_DIR="/storage"
-STORAGE_MOUNT_POINT="/storage"
-MOUNT_GITSTATUS=true
-GITSTATUS_DIR="${CONFIG_FOLDER}/gitstatus"
-GITSTATUS_MOUNT_POINT="/root/.cache/gitstatus"
-MOUNT_TMP=false
-MOUNT_SYSTEM=true
-MOUNT_APEX=true
-MOUNT_SYS=false
-MOUNT_DEV=true
-MOUNT_PROC=true
-FAKE_PROOT_PROC=true
-MOUNT_CAP_LAST_CAP=true
-NUM_OF_MOUNTS=2
-# Reserved for dynamic mounts (MOUNT_SOURCE_X)
-
-# -- System --
-TMOE_LOCALE_FILE="${CONFIG_FOLDER}/locale.txt"
-DEFAULT_SHELL_CONF="${CONFIG_FOLDER}/default_shell.conf"
-HOST_NAME_FILE="\${ROOTFS_DIR}/etc/hostname"
-ENDOFPROOT
-
-    cat >>"${TMOE_STARTUP_SCRIPT}" <<-'ENDOFPROOT'
 # Global Array for Building Command
 CMD_ARGS=()
 
-# ------------------------------------------------------------------------------
-# Helper Functions
-# ------------------------------------------------------------------------------
-
-load_configs() {
-    # Load external config files if they exist
-    # shellcheck source=/dev/null
-    [[ -r "${PROOT_CONF_FILE}" ]] && source "${PROOT_CONF_FILE}"
-    # shellcheck source=/dev/null
-    [[ -z "${MOUNT_SD}" && -r "${SD_CONF_FILE}" ]] && source "${SD_CONF_FILE}"
-    # shellcheck source=/dev/null
-    [[ -z "${MOUNT_TERMUX}" && -r "${TERMUX_CONF_FILE}" ]] && source "${TERMUX_CONF_FILE}"
-    # shellcheck source=/dev/null
-    [[ -z "${MOUNT_TF}" && -r "${TF_CONF_FILE}" ]] && source "${TF_CONF_FILE}"
-    # shellcheck source=/dev/null
-    [[ -z "${MOUNT_STORAGE}" && -r "${STORAGE_CONF_FILE}" ]] && source "${STORAGE_CONF_FILE}"
-
-    # Compatibility Mode Logic
-    if [[ "${OLD_ANDROID_VERSION_COMPATIBILITY_MODE}" == "true" ]]; then
-        PROOT_P=false
-        PROOT_L=false
-        PROOT_SYSVIPC=false
-        FAKE_KERNEL=true
-    fi
-}
-
-determine_proot_program() {
-    case "${PROOT_BIN}" in
-    "" | system | default) PROOT_PROGRAM="proot" ;;
-    termux | prefix) PROOT_PROGRAM="${PREFIX}/bin/proot" ;;
-    compatibility)
-        PROOT_PROGRAM="${PROOT_COMPATIBLE_MODE_BIN}"
-        SHARE_PROOT_LOADER=true
-        PROOT_LOADER="${COMPATIBLE_MODE_LOADER}"
-        LD_LIB_PATH="${COMPATIBLE_MODE_LD_LIB_PATH}"
-        ;;
-    32)
-        if [[ "${HOST_DISTRO}" == "Android" ]]; then
-            PROOT_PROGRAM="${PROOT_32_TERMUX_BIN}"
-            # Also imply logic for loader if needed, but keeping it simple for now
-        else
-            PROOT_PROGRAM="proot"
-        fi
-        ;;
-    *) PROOT_PROGRAM="${PROOT_BIN}" ;;
-    esac
-}
-
 determine_shell() {
-    if [[ -r "${DEFAULT_SHELL_CONF}" ]]; then
-        # shellcheck source=/dev/null
-        source "${DEFAULT_SHELL_CONF}"
+    # Default fallback
+    TMOE_SHELL="/bin/bash"
+
+    # Try to get shell from /etc/passwd in container
+    if [[ -r "${ROOTFS_DIR}/etc/passwd" ]]; then
+        local user_shell; user_shell=$\(grep "^root:" "${ROOTFS_DIR}/etc/passwd" | cut -d: -f7)
+
+        [[ -n "\${user_shell}" ]] && [[ -x "${ROOTFS_DIR}\${user_shell}" ]] && TMOE_SHELL="\${user_shell}"
     fi
 
-    if [[ -z "${TMOE_SHELL}" ]]; then
-        local shells=("${DEFAULT_LOGIN_SHELL_0}" "${DEFAULT_LOGIN_SHELL_1}" "${DEFAULT_LOGIN_SHELL_2}" "${DEFAULT_LOGIN_SHELL_3}" "${DEFAULT_LOGIN_SHELL_4}")
-        for shell in "${shells[@]}"; do
-            # Ensure shell starts with /bin/ if not already absolute path
-            local check_path="${shell}"
-            [[ "${shell}" != */* ]] && check_path="/bin/${shell}"
-
-            if [[ -f "${ROOTFS_DIR}${check_path}" || -L "${ROOTFS_DIR}${check_path}" ]]; then
-                TMOE_SHELL="${check_path}"
-                break
-            fi
-        done
-    fi
-
-    # Fallback
-    [[ -z "${TMOE_SHELL}" ]] && TMOE_SHELL="/bin/bash"
-    # Ensure fully qualified path
-    if [[ "${TMOE_SHELL}" != */* ]]; then
-        TMOE_SHELL="/bin/${TMOE_SHELL}"
-    fi
-}
-
-# ------------------------------------------------------------------------------
-# Core Setup Functions
-# ------------------------------------------------------------------------------
-
-configure_proot_cmd() {
-    # 1. Proot User & Home
-    local p_uid="0"
-    local p_gid="0"
-    local p_home="/root"
-
-    if [[ "${PROOT_USER}" != "root" && -n "${PROOT_USER}" ]]; then
-        # Extract UID/GID/HOME from /etc/passwd in rootfs
-        local user_entry
-        user_entry=$(grep "^${PROOT_USER}:" "${ROOTFS_DIR}/etc/passwd" || true)
-        if [[ -n "${user_entry}" ]]; then
-            p_uid=$(echo "$user_entry" | cut -d: -f3)
-            p_gid=$(echo "$user_entry" | cut -d: -f4)
-            p_home=$(echo "$user_entry" | cut -d: -f6)
-        fi
-    fi
-
-    [[ "${HOME_DIR}" != "default" && -n "${HOME_DIR}" ]] && p_home="${HOME_DIR}"
-
-    if [[ "${PROOT_USER}" == "root" || -z "${PROOT_USER}" ]]; then
-        CMD_ARGS+=("--root-id")
-    else
-        CMD_ARGS+=("--change-id=${p_uid}:${p_gid}")
-    fi
-
-    # 2. Working Directory
-    if [[ "${EXA_ENABLED}" == "true" ]]; then
-        CMD_ARGS+=("--pwd=/")
-    else
-        local work_dir="${p_home}"
-        [[ "${WORK_DIR}" != "default" && -n "${WORK_DIR}" ]] && work_dir="${WORK_DIR}"
-        CMD_ARGS+=("--pwd=${work_dir}")
-        CMD_ARGS+=("--rootfs=${ROOTFS_DIR}")
-    fi
-
-    # 3. Proot Options
-    [[ "${KILL_ON_EXIT}" == "true" ]] && CMD_ARGS+=("--kill-on-exit")
-    [[ "${PROOT_SYSVIPC}" == "true" ]] && CMD_ARGS+=("--sysvipc")
-    [[ "${PROOT_L}" == "true" ]] && CMD_ARGS+=("-L")
-    [[ "${PROOT_H}" == "true" ]] && CMD_ARGS+=("-H")
-    [[ "${PROOT_P}" == "true" ]] && CMD_ARGS+=("-p")
-    [[ "${LINK_TO_SYMLINK}" == "true" ]] && CMD_ARGS+=("--link2symlink")
-    [[ "${FAKE_KERNEL}" == "true" ]] && CMD_ARGS+=("--kernel-release=${KERNEL_RELEASE}")
-    [[ "${PROOT_DEBUG}" == "true" ]] && CMD_ARGS+=("--verbose=${VERBOSE_LEVEL}")
-
-    # Loader sharing
-    if [[ "${SHARE_PROOT_LOADER}" == "true" && -n "${PROOT_LOADER}" ]]; then
-        CMD_ARGS+=("--mount=${PROOT_LOADER}:${PROOT_LOADER}")
-    fi
-}
-
-configure_mounts() {
-    # Helper for mounting if source exists
-    # Usage: add_mount_if_exists "source" "destination"
-    add_mount_if_exists() {
-        local src="$1"
-        local dest="$2"
-        if [[ -e "$src" ]]; then
-            CMD_ARGS+=("--mount=${src}:${dest}")
-        fi
-    }
-
-    # Basic System Mounts for Android
-    if [[ "${HOST_DISTRO}" == "Android" ]]; then
-        [[ "${MOUNT_SYSTEM}" == "true" ]] && add_mount_if_exists "/system" "/system"
-        [[ "${MOUNT_APEX}" == "true" ]] && add_mount_if_exists "/apex" "/apex"
-        [[ "${MOUNT_STORAGE}" == "true" ]] && add_mount_if_exists "${STORAGE_DIR}" "${STORAGE_MOUNT_POINT}"
-        [[ "${MOUNT_TERMUX}" == "true" ]] && add_mount_if_exists "${TERMUX_DIR}" "${TERMUX_MOUNT_POINT}"
-
-        if [[ "${MOUNT_TF}" == "true" && -L "${TF_CARD_LINK}" ]]; then
-            local true_tf
-            true_tf=$(readlink "${TF_CARD_LINK}")
-            add_mount_if_exists "${true_tf}" "${TF_MOUNT_POINT}"
-        fi
-    fi
-
-    # Proc & Dev
-    if [[ "${MOUNT_PROC}" == "true" ]]; then
-        CMD_ARGS+=("--mount=/proc:/proc")
-    fi
-    if [[ "${MOUNT_DEV}" == "true" ]]; then
-        CMD_ARGS+=("--mount=/dev:/dev")
-        # Specially mapped devices
-        CMD_ARGS+=("--mount=${ROOTFS_DIR}/tmp:/dev/shm")
-        CMD_ARGS+=("--mount=/dev/urandom:/dev/random")
-        CMD_ARGS+=("--mount=/proc/self/fd:/dev/fd")
-        CMD_ARGS+=("--mount=/proc/self/fd/0:/dev/stdin")
-        CMD_ARGS+=("--mount=/proc/self/fd/1:/dev/stdout")
-        CMD_ARGS+=("--mount=/proc/self/fd/2:/dev/stderr")
-        CMD_ARGS+=("--mount=/dev/null:/dev/tty0")
-    fi
-
-    # Sys & Tmp
-    [[ "${MOUNT_SYS}" == "true" ]] && add_mount_if_exists "/sys" "/sys"
-    if [[ "${MOUNT_TMP}" == "true" ]]; then
-        # Only mount if source is valid, else proot handles /tmp usually
-        add_mount_if_exists "/tmp" "/tmp"
-    fi
-
-    # Gitstatus
-    if [[ "${MOUNT_GITSTATUS}" == "true" ]]; then
-        add_mount_if_exists "${GITSTATUS_DIR}" "${GITSTATUS_MOUNT_POINT}"
-    fi
-
-    # Cap Last Cap
-    if [[ "${MOUNT_CAP_LAST_CAP}" == "true" ]]; then
-        local cap_src="/dev/null"
-        [[ -n "${CAP_LAST_CAP_SOURCE:-}" ]] && cap_src="${CAP_LAST_CAP_SOURCE}"
-        CMD_ARGS+=("--mount=${cap_src}:/proc/sys/kernel/cap_last_cap")
-    fi
-
-    # Fake Proc (TMOE special)
-    if [[ "${FAKE_PROOT_PROC}" == "true" ]]; then
-        add_mount_if_exists "${PROOT_PROC_DIR}/.proot_proc.stat" "/proc/stat"
-        add_mount_if_exists "${PROOT_PROC_DIR}/.proot_proc.version" "/proc/version"
-        # Mount other fake proc files if they exist in the proot_proc dir
-        local proc_files=("bus" "buddyinfo" "cgroups" "consoles" "cpuinfo" "crypto" "devices" "diskstats" "execdomains" "fb" "filesystems" "interrupts" "iomem" "ioports" "kallsyms" "keys" "key-users" "kpageflags" "loadavg" "locks" "misc" "modules" "pagetypeinfo" "partitions" "sched_debug" "softirqs" "timer_list" "uptime" "vmallocinfo" "vmstat" "zoneinfo")
-        for f in "${proc_files[@]}"; do
-            if [[ -e "${PROOT_PROC_DIR}/${f}" ]]; then
-                CMD_ARGS+=("--mount=${PROOT_PROC_DIR}/${f}:/proc/${f}")
-            fi
-        done
-    fi
-
-    # SD Card Auto-detection
-    if [[ "${MOUNT_SD}" == "true" ]]; then
-        local sd_dirs=(
-            "/storage/self/primary/Download"
-            "/sdcard/Download"
-            "/storage/emulated/0/Download"
-            "${HOME}/sd/Download"
-            "${HOME}/Downloads"
-            "${HOME}/Download"
-        )
-        for dir in "${sd_dirs[@]}"; do
-            if [[ -x "$dir" ]]; then
-                CMD_ARGS+=("--mount=${dir}:${SD_MOUNT_POINT}")
-                break
-            fi
-        done
-    fi
-
-    # Dynamic Mounts (MOUNT_SOURCE_N)
-    for ((i = 1; i <= ${NUM_OF_MOUNTS}; i++)); do
-        local src_var="MOUNT_SOURCE_${i}"
-        local dst_var="MOUNT_POINT_${i}"
-        local src="${!src_var:-}"
-        local dst="${!dst_var:-}"
-
-        if [[ -n "${src}" && -x "${src}" && -n "${dst}" ]]; then
-            CMD_ARGS+=("--mount=${src}:${dst}")
-        fi
-    done
-}
-
-configure_qemu() {
-    # Skip if EXA enabled as it conflicts
-    [[ "${EXA_ENABLED}" == "true" ]] && return 0
-
-    local use_qemu=false
-
-    # Simple QEMU Detection Logic
-    if [[ "${SKIP_QEMU_DETECTION}" == "true" ]]; then
-        use_qemu=true
-    elif [[ "${CONTAINER_ARCH}" != "${HOST_ARCH}" ]]; then
-        # Check if arches are compatible (e.g. arm64 host can run armhf/armel without qemu usually, but here we simplify)
-        # Original script had complex logic, simplifying to: if different, check compatibility
-        case "${HOST_ARCH}-${CONTAINER_ARCH}" in
-        arm64-arm*) use_qemu=false ;; # arm64 runs arm32 natively
-        amd64-i386) use_qemu=false ;; # amd64 runs i386 natively
-        *) use_qemu=true ;;
-        esac
-    fi
-
-    if [[ "${use_qemu}" == "true" ]]; then
-        local qemu_bin=""
-
-        # Determine QEMU Binary
-        if [[ "${QEMU_USER_BIN}" != "default" && -n "${QEMU_USER_BIN}" ]]; then
-            qemu_bin="${QEMU_USER_BIN}"
-        else
-            # Determine Architecture Suffix for QEMU
-            local arch_suffix="${CONTAINER_ARCH}"
-            case "${CONTAINER_ARCH}" in
-            arm64) arch_suffix="aarch64" ;;
-            armhf) arch_suffix="arm" ;;
-            amd64) arch_suffix="x86_64" ;;
-            i386) arch_suffix="i386" ;;
-                # Add others as needed
-            esac
-
-            local path_prefix="${QEMU_USER_STATIC_PATH}/"
-            [[ "${QEMU_32_ENABLED}" == "true" ]] && path_prefix="${QEMU_USER_STATIC_32_PATH}/"
-
-            qemu_bin="${path_prefix}qemu-${arch_suffix}-static"
-        fi
-
-        if [[ -x "${qemu_bin}" ]]; then
-            CMD_ARGS+=("--qemu=${qemu_bin}")
-        else
-            log_warn "QEMU binary not found at ${qemu_bin}. Emulation might fail."
-        fi
-    fi
-}
-
-configure_exa() {
-    if [[ "${EXA_ENABLED}" == "true" ]]; then
-        # Add Exa binary and options
-        # Note: EXA seems to replace the main command or wrap it?
-        # Original: set -- "${@}" "${EXA_PATH}/exa-i386_armeabi"
-        # Since we prepend PROOT before CMD_ARGS, and EXA logic seemed to be appended to args *before* shell?
-        # WAIT: In original script, EXA logic was:
-        # set -- "${@}" "${EXA_PATH}/exa-i386_armeabi" ...
-        # This appends to the arguments list.
-        # But `start_tmoe` executes `exec "${@}"`.
-        # So it effectively runs `proot ... exa ... /usr/bin/env ... shell`.
-
-        # Yes, we should append EXA args to CMD_ARGS here.
-        local exa_bin="${EXA_PATH}/exa-i386_armeabi"
-        if [[ -x "${exa_bin}" ]]; then
-            CMD_ARGS+=("${exa_bin}")
-            CMD_ARGS+=("--path-prefix" "${ROOTFS_DIR}") # EXA_PREFIX is ROOTFS_DIR usually
-            CMD_ARGS+=("--vfs-hacks=${VFS_HACKS}")
-            CMD_ARGS+=("--vfs-kind" "${VFS_KIND}")
-            [[ -n "${SOCKET_PATH_SUFFIX}" ]] && CMD_ARGS+=("--socket-path-suffix" "${SOCKET_PATH_SUFFIX}")
-            CMD_ARGS+=("--vpaths-list" "${VPATHS_LIST}")
-            CMD_ARGS+=("--tmp-dir" "${ROOTFS_DIR}/tmp")
-            CMD_ARGS+=("--")
-        else
-            log_warn "EXA binary not found at ${exa_bin}. Disabling EXA."
-            EXA_ENABLED=false
-        fi
-    fi
+    echo "\${TMOE_SHELL}"
 }
 
 configure_environment() {
@@ -763,105 +284,90 @@ configure_environment() {
     CMD_ARGS+=("/usr/bin/env" "-i") # Clear env
 
     # 2. Hostname
-    local hostname="localhost"
-    [[ -r "${HOST_NAME_FILE}" ]] && hostname=$(head -n1 "${HOST_NAME_FILE}")
-    CMD_ARGS+=("HOSTNAME=${hostname}")
+    CMD_ARGS+=("HOSTNAME=localhost")
 
     # 3. Basic Env Vars
     CMD_ARGS+=("HOME=/root")
-    [[ "${PROOT_USER}" != "root" ]] && CMD_ARGS+=("HOME=/home/${PROOT_USER}")
-    CMD_ARGS+=("USER=${PROOT_USER}")
+    CMD_ARGS+=("USER=root")
     CMD_ARGS+=("TERM=xterm-256color")
     CMD_ARGS+=("TMPDIR=/tmp")
     CMD_ARGS+=("DISPLAY=:0") # Default display
-    CMD_ARGS+=("TZ=$(getprop persist.sys.timezone 2>/dev/null)")
+    CMD_ARGS+=("TZ=$(getprop persist.sys.timezone)")
 
     # 4. Locale
-    if [[ -r "${TMOE_LOCALE_FILE}" ]]; then
-        CMD_ARGS+=("LANG=$(head -n 1 "${TMOE_LOCALE_FILE}")")
-    else
-        CMD_ARGS+=("LANG=en_US.UTF-8")
-    fi
+    CMD_ARGS+=("LANG=en_US.UTF-8")
 
-    # 5. Load Container Env File
-    if [[ "${LOAD_ENV_FILE}" == "true" && -r "${CONTAINER_ENV_FILE}" ]]; then
-        # We need to extract vars carefully. Original used sed/grep.
-        if [[ -z "${new_path}" ]]; then
-            # Try without quotes
-            new_path=$(grep '^export PATH=' "${CONTAINER_ENV_FILE}" | cut -d= -f2 || true)
-        fi
-        [[ -n "${new_path}" ]] && CMD_ARGS+=("PATH=${new_path}")
-    fi
-
-    # Check if PATH is set in CMD_ARGS
-    local path_set=false
-    for arg in "${CMD_ARGS[@]}"; do
-        if [[ "${arg}" == PATH=* ]]; then
-            path_set=true
-            break
-        fi
-    done
-
-    # Default PATH if not set
-    if [[ "${path_set}" == "false" ]]; then
-        if [[ "${PROOT_USER}" == "root" || -z "${PROOT_USER}" ]]; then
-            CMD_ARGS+=("PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin")
-        else
-            CMD_ARGS+=("PATH=/usr/local/bin:/usr/bin:/bin:/usr/local/games:/usr/games")
-        fi
-    fi
+    # 5. PATH
+    CMD_ARGS+=("PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin")
 
     # 6. Shell
-    determine_shell
-    CMD_ARGS+=("SHELL=${TMOE_SHELL}")
-
-    # Shell Args
-    local final_shell_args=("${TMOE_SHELL}")
-
-    # Handle login shell arg (pwsh/nu don't support -l the same way)
-    if [[ "${TMOE_SHELL}" != *"pwsh"* && "${TMOE_SHELL}" != *"nu"* ]]; then
-        [[ -n "${LOGIN_SHELL_ARG}" ]] && final_shell_args+=("${LOGIN_SHELL_ARG}")
-    fi
-
-    # Append Shell to Command
-    CMD_ARGS+=("${final_shell_args[@]}")
+    CMD_ARGS+=("SHELL=\$(determine_shell)" "\$(determine_shell)" "-l")
 }
 
-# ------------------------------------------------------------------------------
-# Main Function
-# ------------------------------------------------------------------------------
 main() {
     unset LD_PRELOAD
-    load_configs
-    determine_proot_program
 
-    # Initialize Proot Command
-    configure_proot_cmd
-    configure_mounts
-    configure_qemu
-    configure_exa
+    CMD_ARGS+=("--root-id" "--pwd=/root" "--rootfs=${ROOTFS_DIR}")
+
+    CMD_ARGS+=("--link2symlink" "--kill-on-exit" "--sysvipc" "-L")
+
+    CMD_ARGS+=("--mount=/system" "--mount=/apex")
+
+    CMD_ARGS+=("--mount=/proc")
+
+    CMD_ARGS+=("--mount=/dev")
+
+    CMD_ARGS+=("--mount=${ROOTFS_DIR}/tmp:/dev/shm")
+    CMD_ARGS+=("--mount=/dev/urandom:/dev/random")
+    CMD_ARGS+=("--mount=/proc/self/fd:/dev/fd")
+    CMD_ARGS+=("--mount=/proc/self/fd/0:/dev/stdin")
+    CMD_ARGS+=("--mount=/proc/self/fd/1:/dev/stdout")
+    CMD_ARGS+=("--mount=/proc/self/fd/2:/dev/stderr")
+    CMD_ARGS+=("--mount=/dev/null:/dev/tty0")
+
+    CMD_ARGS+=("--mount=/dev/null:/proc/sys/kernel/cap_last_cap")
+
+    # CMD_ARGS+=("--mount=${ROOTFS_DIR}/usr/local/etc/tmoe/.proot_proc.stat:/proc/stat")
+
+    # CMD_ARGS+=("--mount=${ROOTFS_DIR}/usr/local/etc/tmoe/.proot_proc.version:/proc/version")
+
+    # CMD_ARGS+=("--mount=${ROOTFS_DIR}/usr/local/etc/tmoe/proot_proc/bus:/proc/bus")
+
+    # CMD_ARGS+=("--mount=${ROOTFS_DIR}/usr/local/etc/tmoe/proot_proc/buddyinfo:/proc/buddyinfo")
+    # CMD_ARGS+=("--mount=${ROOTFS_DIR}/usr/local/etc/tmoe/proot_proc/cgroups:/proc/cgroups")
+    # CMD_ARGS+=("--mount=${ROOTFS_DIR}/usr/local/etc/tmoe/proot_proc/consoles:/proc/consoles")
+    # CMD_ARGS+=("--mount=${ROOTFS_DIR}/usr/local/etc/tmoe/proot_proc/crypto:/proc/crypto")
+    # CMD_ARGS+=("--mount=${ROOTFS_DIR}/usr/local/etc/tmoe/proot_proc/devices:/proc/devices")
+    # CMD_ARGS+=("--mount=${ROOTFS_DIR}/usr/local/etc/tmoe/proot_proc/diskstats:/proc/diskstats")
+    # CMD_ARGS+=("--mount=${ROOTFS_DIR}/usr/local/etc/tmoe/proot_proc/execdomains:/proc/execdomains")
+    # CMD_ARGS+=("--mount=${ROOTFS_DIR}/usr/local/etc/tmoe/proot_proc/fb:/proc/fb")
+    # CMD_ARGS+=("--mount=${ROOTFS_DIR}/usr/local/etc/tmoe/proot_proc/filesystems:/proc/filesystems")
+    # CMD_ARGS+=("--mount=${ROOTFS_DIR}/usr/local/etc/tmoe/proot_proc/interrupts:/proc/interrupts")
+    # CMD_ARGS+=("--mount=${ROOTFS_DIR}/usr/local/etc/tmoe/proot_proc/iomem:/proc/iomem")
+    # CMD_ARGS+=("--mount=${ROOTFS_DIR}/usr/local/etc/tmoe/proot_proc/ioports:/proc/ioports")
+    # CMD_ARGS+=("--mount=${ROOTFS_DIR}/usr/local/etc/tmoe/proot_proc/kallsyms:/proc/kallsyms")
+    # CMD_ARGS+=("--mount=${ROOTFS_DIR}/usr/local/etc/tmoe/proot_proc/keys:/proc/keys")
+    # CMD_ARGS+=("--mount=${ROOTFS_DIR}/usr/local/etc/tmoe/proot_proc/key-users:/proc/key-users")
+    # CMD_ARGS+=("--mount=${ROOTFS_DIR}/usr/local/etc/tmoe/proot_proc/kpageflags:/proc/kpageflags")
+    # CMD_ARGS+=("--mount=${ROOTFS_DIR}/usr/local/etc/tmoe/proot_proc/loadavg:/proc/loadavg")
+    # CMD_ARGS+=("--mount=${ROOTFS_DIR}/usr/local/etc/tmoe/proot_proc/locks:/proc/locks")
+    # CMD_ARGS+=("--mount=${ROOTFS_DIR}/usr/local/etc/tmoe/proot_proc/misc:/proc/misc")
+    # CMD_ARGS+=("--mount=${ROOTFS_DIR}/usr/local/etc/tmoe/proot_proc/modules:/proc/modules")
+    # CMD_ARGS+=("--mount=${ROOTFS_DIR}/usr/local/etc/tmoe/proot_proc/pagetypeinfo:/proc/pagetypeinfo")
+    # CMD_ARGS+=("--mount=${ROOTFS_DIR}/usr/local/etc/tmoe/proot_proc/partitions:/proc/partitions")
+    # CMD_ARGS+=("--mount=${ROOTFS_DIR}/usr/local/etc/tmoe/proot_proc/sched_debug:/proc/sched_debug")
+    # CMD_ARGS+=("--mount=${ROOTFS_DIR}/usr/local/etc/tmoe/proot_proc/softirqs:/proc/softirqs")
+    # CMD_ARGS+=("--mount=${ROOTFS_DIR}/usr/local/etc/tmoe/proot_proc/timer_list:/proc/timer_list")
+    # CMD_ARGS+=("--mount=${ROOTFS_DIR}/usr/local/etc/tmoe/proot_proc/uptime:/proc/uptime")
+    # CMD_ARGS+=("--mount=${ROOTFS_DIR}/usr/local/etc/tmoe/proot_proc/vmallocinfo:/proc/vmallocinfo")
+    # CMD_ARGS+=("--mount=${ROOTFS_DIR}/usr/local/etc/tmoe/proot_proc/vmstat:/proc/vmstat")
+    # CMD_ARGS+=("--mount=${ROOTFS_DIR}/usr/local/etc/tmoe/proot_proc/zoneinfo:/proc/zoneinfo")
+
+    CMD_ARGS+=("--mount=/storage/emulated/0:/sdcard")
+    
     configure_environment
 
-    # Add Proot Program to start of args
-    # Note: CMD_ARGS currently holds [options, /usr/bin/env, vars, shell]
-    # We need to prepend PROOT_PROGRAM
-
-    local final_cmd=("${PROOT_PROGRAM}" "${CMD_ARGS[@]}")
-
-    # Handle LD_LIBRARY_PATH / PROOT_LOADER for the proot binary itself (not inside container)
-    local wrapper_env=()
-    if [[ -n "${PROOT_LOADER}" ]]; then
-        wrapper_env+=("PROOT_LOADER=${PROOT_LOADER}")
-    fi
-    if [[ -n "${LD_LIB_PATH}" && "${LD_LIB_PATH}" != "default" ]]; then
-        wrapper_env+=("LD_LIBRARY_PATH=${LD_LIB_PATH}")
-    fi
-
-    if [[ ${#wrapper_env[@]} -gt 0 ]]; then
-        exec env "${wrapper_env[@]}" "${final_cmd[@]}"
-    else
-        exec "${final_cmd[@]}"
-    fi
+    proot "\${CMD_ARGS[@]}"
 }
 
 # Start
@@ -878,13 +384,12 @@ configure_dns() {
     local rootfs="$1"
     log_info "Configuring DNS..."
     rm -f "$rootfs/etc/resolv.conf"
-    cat >"$rootfs/etc/resolv.conf" <<-'EndOfFile'
+    cat >"$rootfs/etc/resolv.conf" <<-'EOF'
 nameserver 1.1.1.1
-nameserver 8.8.8.8
+nameserver 1.0.0.1
 nameserver 2606:4700:4700::1111
-nameserver 2001:4860:4860::8888
-EndOfFile
-    chmod 644 "$rootfs/etc/resolv.conf"
+nameserver 2606:4700:4700::1001
+EOF
 }
 
 configure_sources() {
@@ -905,14 +410,32 @@ configure_hostname() {
     local rootfs="$1"
     log_info "Configuring hostname..."
     echo "localhost" >"$rootfs/etc/hostname"
-    echo "127.0.0.1 localhost" >>"$rootfs/etc/hosts"
 }
 
 configure_zsh() {
     local rootfs="$1"
     log_info "Configuring ZSH setup..."
 
-    mkdir -p ~/.termux && curl -fLo ~/.termux/font.ttf https://github.com/ryanoasis/nerd-fonts/raw/master/patched-fonts/JetBrainsMono/Ligatures/Regular/JetBrainsMonoNerdFontMono-Regular.ttf && termux-reload-settings
+    local font_url="https://github.com/ryanoasis/nerd-fonts/raw/master/patched-fonts/JetBrainsMono/Ligatures/Regular/JetBrainsMonoNerdFontMono-Regular.ttf"
+    local cached_font="$CACHE_DIR/${font_url##*/}"
+
+    # Download if not in cache
+    if [[ ! -f "$cached_font" ]]; then
+        log_info "Downloading ${font_url##*/} to cache..."
+        curl -fLo "$cached_font" "$font_url" || {
+            log_error "Failed to download font."
+            rm -f "$cached_font"
+            return 1
+        }
+    fi
+
+    # Symlink to Termux
+    if [[ -f "$cached_font" ]]; then
+        mkdir -p "$HOME/.termux"
+        log_info "Applying font..."
+        ln -sf "$cached_font" "$HOME/.termux/font.ttf"
+        command -v termux-reload-settings >/dev/null && termux-reload-settings
+    fi
 
     # Backup original .profile
     if [[ -f "$rootfs/root/.profile" ]]; then
@@ -922,13 +445,19 @@ configure_zsh() {
     # Create setup .profile
     cat >"$rootfs/root/.profile" <<-'EOF'
 #!/usr/bin/env bash
-echo "----------------------------------------------------------------"
-echo "First launch detected. Running initial setup..."
-echo "----------------------------------------------------------------"
+set -euo pipefail
+
+BLUE='\033[34m'
+RESET='\033[0m'
+BOLD='\033[1m'
+
+log_title() { echo -e "${BOLD}${BLUE}== $1 ==${RESET}" >&2; }
+
+log_title "First launch detected. Running initial setup..."
 
 # Update and Install
 apt-get update
-apt-get install -y git zsh file curl
+apt-get install -y curl file git zsh
 
 # Change default shell
 if command -v zsh >/dev/null; then
@@ -936,6 +465,14 @@ if command -v zsh >/dev/null; then
     chsh -s /bin/zsh
 else
     echo "Error: zsh install failed."
+fi
+
+if [[ ! -f $HOME/.local/share/zinit/zinit.git/zinit.zsh ]]; then
+    printf "\033[33mInstalling ZDHARMA-CONTINUUM Initiative Plugin Manager (zdharma-continuum/zinit)…\033[0m\n"
+    mkdir -p "$HOME/.local/share/zinit" && chmod g-rwX "$HOME/.local/share/zinit"
+    git clone --depth 1 https://github.com/zdharma-continuum/zinit "$HOME/.local/share/zinit/zinit.git" && \
+        printf "\033[32mInstallation successful.\033[0m\n" || \
+        printf "\033[31mThe clone has failed.\033[0m\n"
 fi
 
 # Restore original profile
@@ -951,7 +488,6 @@ echo "Exiting..."
 sleep 2
 exit 0
 EOF
-    chmod 755 "$rootfs/root/.profile"
 
     # Create .zshrc
     cat >"$rootfs/root/.zshrc" <<-'EOF'
@@ -962,14 +498,6 @@ setopt HIST_IGNORE_DUPS
 
 setopt AUTO_CD
 setopt AUTO_PUSHD
-
-if [[ ! -f $HOME/.local/share/zinit/zinit.git/zinit.zsh ]]; then
-    print -P "%F{33} %F{220}Installing %F{33}ZDHARMA-CONTINUUM%F{220} Initiative Plugin Manager (%F{33}zdharma-continuum/zinit%F{220})…%f"
-    command mkdir -p "$HOME/.local/share/zinit" && command chmod g-rwX "$HOME/.local/share/zinit"
-    command git clone --depth 1 https://github.com/zdharma-continuum/zinit "$HOME/.local/share/zinit/zinit.git" && \
-        print -P "%F{33} %F{34}Installation successful.%f%b" || \
-        print -P "%F{160} The clone has failed.%f%b"
-fi
 
 source "$HOME/.local/share/zinit/zinit.git/zinit.zsh"
 autoload -Uz _zinit
