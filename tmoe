@@ -6,12 +6,15 @@ INSTALL_DIR="$HOME/.local/share/tmoe"
 CONTAINER_DIR="$INSTALL_DIR/containers"
 CACHE_DIR="$INSTALL_DIR/cache"
 
-# --- Repository Constants ---
-DEBIAN_REPO="https://images.linuxcontainers.org/images/debian/trixie/arm64/default"
-PROC_URL="https://github.com/cu233/proot_proc/raw/master/proc.tar.xz"
+case "$(uname -m)" in
+    aarch64) ARCH_TYPE="arm64" ;;
+    x86_64)  ARCH_TYPE="amd64" ;;
+    *)       echo "Architecture not supported."; exit 1 ;;
+esac
 
-# --- Constants ---
-ARCH_TYPE="arm64"
+# --- Repository Constants ---
+DEBIAN_REPO="https://images.linuxcontainers.org/images/debian/trixie/${ARCH_TYPE}/default"
+PROC_URL="https://github.com/cu233/proot_proc/raw/master/proc.tar.xz"
 
 # --- Colors ---
 RED='\033[31m'
@@ -271,7 +274,7 @@ determine_shell() {
 
     # Try to get shell from /etc/passwd in container
     if [[ -r "${ROOTFS_DIR}/etc/passwd" ]]; then
-        local user_shell; user_shell=$\(grep "^root:" "${ROOTFS_DIR}/etc/passwd" | cut -d: -f7)
+        local user_shell; user_shell=\$(grep "^root:" "${ROOTFS_DIR}/etc/passwd" | cut -d: -f7)
 
         [[ -n "\${user_shell}" ]] && [[ -x "${ROOTFS_DIR}\${user_shell}" ]] && TMOE_SHELL="\${user_shell}"
     fi
@@ -545,7 +548,7 @@ login_container() {
     local start_script="$CONTAINER_DIR/$name/usr/local/etc/tmoe/start.sh"
 
     if [[ -x "$start_script" ]]; then
-        log_title "Logging into $name..."
+        log_title "Login into $name..."
         "$start_script"
     else
         log_error "Container '$name' not found or start script missing."
